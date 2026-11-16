@@ -147,9 +147,13 @@ function card(b){
       <span>${win?'🏆 ':''}${esc(o.label)}</span>${adm?`<button class="a" onclick="event.stopPropagation();settle(${b.id},${o.id})">✓ vyhrálo</button>`:''}<b class="od">${OD(o).toFixed(2)}${OD(o)>Number(o.odds)+0.004?' ▲':OD(o)<Number(o.odds)-0.004?' ▼':''}</b>
       ${m?`<small>Tvoje sázka ${m} 🪙 → možná výhra ${pwin} 🪙</small>`:''}</div>`}).join('');
   const bar=live&&os.some(o=>o.id==sel)?`<div class="bar">${[10,50,100].map(v=>`<button onclick="$('#amt').value=${v};pw()">${v}</button>`).join('')}<input id="amt" type="number" min="1" inputmode="numeric" placeholder="částka" oninput="pw()"><button class="go" onclick="bet()">Vsadit</button></div><small class="m" id="pw"></small>`:'';
+  const big=os.length>6,col=big&&!EX.has(b.id);
+  const wl=(os.find(o=>o.id==b.winning_option_id)||{}).label;
+  const cbtn=`<div class="o" onclick="tgl(${b.id})"><span>👥 Zobrazit všechny možnosti (${os.length}) ▾</span>${b.status=='settled'&&wl?`<small>🏆 Vyhrálo: ${esc(wl)}</small>`:''}${mine.length?`<small>Tvoje sázky celkem: ${mine.reduce((x,w)=>x+w.amount,0)} 🪙</small>`:''}</div>`;
+  const hide=big?`<p><a onclick="tgl(${b.id})" style="margin:0">▴ Skrýt možnosti</a></p>`:'';
   let res='';
   if(b.status=='settled'&&mine.length){const net=mine.reduce((s,w)=>s+(w.payout||0)-w.amount,0);res=`<p class="${net>=0?'pos':'neg'}">Tvůj výsledek: ${net>=0?'+':''}${net} 🪙</p>`}
-  return `<div class="c"><small>${esc(b.subject)} · ${st}</small><div class="t">${esc(b.title)}</div>${opts}${bar}${res}
+  return `<div class="c"><small>${esc(b.subject)} · ${st}</small><div class="t">${esc(b.title)}</div>${col?cbtn:opts+hide}${col?'':bar}${res}
     ${adm?`<p><a onclick="cancelBet(${b.id})" style="margin:0">Zrušit sázku</a></p>`:''}</div>`;
 }
 function topView(){
@@ -169,6 +173,11 @@ function monday(){const d=new Date();d.setHours(0,0,0,0);const w=d.getDay();d.se
 function keep(){if($('#title'))dr={subj:$('#subj').value,title:$('#title').value,close:$('#close').value,rows:[...document.querySelectorAll('.rw')].map(r=>({l:r.children[0].value,o:r.children[1].value}))}}
 function addRow(){keep();dr.rows.push({l:'',o:'2.00'});render()}
 function delRow(i){keep();if(dr.rows.length>2){dr.rows.splice(i,1);render()}}
+const CLASS=['Kuba','Bert','Batu','Ivan','Max','Andy','Dan','Filip','Lana','Žeňa','Michaela','Ilma','Elška','Renata','Anička','Sofie','Melissa','Nikola','Karolína','Isa','Lucie'];
+function addNames(){keep();dr.rows=CLASS.map(n=>({l:n,o:'20.00'}));render()}
+function resetRows(){keep();dr.rows=DR0().rows;render()}
+const EX=new Set();
+function tgl(id){EX.has(id)?EX.delete(id):EX.add(id);if(!EX.has(id)&&data.opts.some(o=>o.id==sel&&o.bet_id==id))sel=null;render()}
 function week(n){keep();wk=Math.max(0,wk+n);render()}
 function lesson(i,h,c){keep();const d=monday();d.setDate(d.getDate()+i);const[H,M]=HRS[h].split(':');d.setHours(+H,+M);dr.subj=c;dr.close=loc(d);render()}
 function addView(){
@@ -192,6 +201,8 @@ function addView(){
   <p class="m" style="margin:8px 0 0">Možnosti a počáteční kurzy (pak se samy mění podle sázek):</p>
   ${dr.rows.map((r,i)=>`<div class="rw"><input placeholder="Možnost" value="${esc(r.l)}"><input class="o2" type="number" step="0.01" min="1.01" inputmode="decimal" value="${esc(r.o)}"><button class="x" onclick="delRow(${i})">✕</button></div>`).join('')}
   <button class="btn sec" onclick="addRow()">+ Přidat možnost</button>
+  <button class="btn sec" onclick="addNames()">👥 Přidat všechna jména ze třídy (${CLASS.length})</button>
+  <p class="m" style="margin:6px 0">Každé jméno dostane kurz 20.00, uprav podle potřeby. <a onclick="resetRows()" style="margin:0">↺ Obnovit Kluk / Holka</a></p>
   <button class="btn" onclick="create()">Přidat sázku</button>`;
 }
 
