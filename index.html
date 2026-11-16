@@ -39,6 +39,19 @@ input,select,textarea{width:100%;padding:12px;margin:6px 0;border-radius:10px;bo
 .av{width:36px;height:36px;border-radius:50%;object-fit:cover;background:var(--line);display:inline-flex;align-items:center;justify-content:center;font-weight:bold;margin-right:8px;flex:none;color:var(--tx)}
 .av.me{cursor:pointer;border:2px solid var(--ac)}
 .pos{color:var(--ok)}.neg{color:var(--bad)}
+.dy{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line)}
+.dy>b{width:44px;flex:none}.dy>b small{display:block;color:var(--mu);font-weight:normal}
+.dy>div{display:flex;flex-wrap:wrap;gap:6px}
+.ls{background:var(--in);color:var(--tx);border:1px solid var(--line);border-radius:10px;padding:6px 10px;font:inherit;font-size:14px}
+.ls small{color:var(--mu);margin-right:4px}.ls:disabled{opacity:.35}
+.ls.on{background:var(--ac);color:var(--onac);border-color:var(--ac)}.ls.on small{color:var(--onac)}
+.o span{flex:1}
+.od{background:var(--ac);color:var(--onac);border-radius:8px;padding:2px 10px;font-size:17px}
+.rw{display:flex;gap:6px;align-items:center}.rw input{margin:3px 0;min-width:0}.rw .o2{width:90px;flex:none}
+.rw .x{border:1px solid var(--line);background:none;color:var(--bad);border-radius:10px;padding:10px 12px;font:inherit}
+.wkn{display:flex;justify-content:space-between;align-items:center}
+.wkn button{border:1px solid var(--line);background:none;color:var(--tx);border-radius:10px;padding:6px 16px;font:inherit}
+.wkn button:disabled{opacity:.35}
 </style>
 <script>
 document.documentElement.dataset.theme=(function(){try{var t=localStorage.getItem('th');if(t)return t}catch(e){}return matchMedia('(prefers-color-scheme: light)').matches?'light':'dark'})();
@@ -119,12 +132,12 @@ function card(b){
   const st=b.status=='settled'?'✅ Vyhodnoceno':b.status=='cancelled'?'↩️ Zrušeno, mince vráceny':live?'⏳ Sázet můžeš do '+fmt(b.closes_at):'🔒 Čeká na vyhodnocení';
   const adm=me.is_admin&&b.status=='open';
   const opts=os.map(o=>{
-    const p=ws.filter(w=>w.option_id==o.id).reduce((s,w)=>s+w.amount,0),m=mine.filter(w=>w.option_id==o.id).reduce((s,w)=>s+w.amount,0);
+    const mw=mine.filter(w=>w.option_id==o.id),m=mw.reduce((x,w)=>x+w.amount,0),pwin=mw.reduce((x,w)=>x+Math.floor(w.amount*w.odds),0);
     const win=b.status=='settled'&&b.winning_option_id==o.id;
     return `<div class="o ${sel==o.id?'sel':''} ${win?'win':''}" ${live?`onclick="pick(${o.id})"`:''}>
-      <span>${win?'🏆 ':''}${esc(o.label)}</span>${adm?`<button class="a" onclick="event.stopPropagation();settle(${b.id},${o.id})">✓ vyhrálo</button>`:''}
-      <small>V banku ${p} 🪙 (${tot?Math.round(p*100/tot):0} %)${m?' · tvoje sázka '+m:''}</small></div>`}).join('');
-  const bar=live&&os.some(o=>o.id==sel)?`<div class="bar">${[10,50,100].map(v=>`<button onclick="$('#amt').value=${v}">${v}</button>`).join('')}<input id="amt" type="number" min="1" inputmode="numeric" placeholder="částka"><button class="go" onclick="bet()">Vsadit</button></div>`:'';
+      <span>${win?'🏆 ':''}${esc(o.label)}</span>${adm?`<button class="a" onclick="event.stopPropagation();settle(${b.id},${o.id})">✓ vyhrálo</button>`:''}<b class="od">${Number(o.odds).toFixed(2)}</b>
+      ${m?`<small>Tvoje sázka ${m} 🪙 → možná výhra ${pwin} 🪙</small>`:''}</div>`}).join('');
+  const bar=live&&os.some(o=>o.id==sel)?`<div class="bar">${[10,50,100].map(v=>`<button onclick="$('#amt').value=${v};pw()">${v}</button>`).join('')}<input id="amt" type="number" min="1" inputmode="numeric" placeholder="částka" oninput="pw()"><button class="go" onclick="bet()">Vsadit</button></div><small class="m" id="pw"></small>`:'';
   let res='';
   if(b.status=='settled'&&mine.length){const net=mine.reduce((s,w)=>s+(w.payout||0)-w.amount,0);res=`<p class="${net>=0?'pos':'neg'}">Tvůj výsledek: ${net>=0?'+':''}${net} 🪙</p>`}
   return `<div class="c"><small>${esc(b.subject)} · ${st}</small><div class="t">${esc(b.title)}</div>${opts}${bar}${res}
@@ -133,19 +146,47 @@ function card(b){
 function topView(){
   return [...data.profiles].sort((a,b)=>b.balance-a.balance).map((p,i)=>`<div class="pl ${p.id==uid?'me':''}"><span style="display:flex;align-items:center">${['🥇','🥈','🥉'][i]||i+1+'.'}&nbsp;${av(p)}${esc(p.name)}</span><span>🪙 ${p.balance}</span></div>`).join('');
 }
+const HRS={1:'8:00',2:'8:55',3:'9:55',4:'11:00',5:'11:55',6:'13:15',7:'14:05',8:'14:55',9:'15:45'};
+const SCH={1:[[1,'ČJL'],[2,'MAT'],[3,'EKO'],[4,'EKO'],[5,'ANJ']],
+2:[[1,'ČJL'],[2,'ANJ'],[3,'UCE'],[4,'UCE'],[5,'MAM'],[6,'ČJL'],[7,'PRA']],
+3:[[1,'NEJ'],[2,'EKO'],[3,'PRXU'],[4,'PRXU'],[5,'UCE'],[6,'PRA'],[7,'TEV'],[8,'TEV'],[9,'NEJ']],
+4:[[1,'PEK'],[2,'HOZ'],[3,'MAT'],[4,'HOZ'],[5,'ANJ'],[6,'IDK'],[8,'NEJ']],
+5:[[3,'PRXU'],[4,'PRXU'],[5,'EKO'],[6,'MAM']]};
+const DAYS=['','Po','Út','St','Čt','Pá'];
+const DR0=()=>({subj:'MAT',title:'',close:'',rows:[{l:'Kluk',o:'1.90'},{l:'Holka',o:'1.90'}]});
+let wk=0,dr=DR0();
+const loc=d=>new Date(d-d.getTimezoneOffset()*6e4).toISOString().slice(0,16);
+function monday(){const d=new Date();d.setHours(0,0,0,0);const w=d.getDay();d.setDate(d.getDate()-(w==0?6:w-1)+(w==0||w==6?7:0)+wk*7);return d}
+function keep(){if($('#title'))dr={subj:$('#subj').value,title:$('#title').value,close:$('#close').value,rows:[...document.querySelectorAll('.rw')].map(r=>({l:r.children[0].value,o:r.children[1].value}))}}
+function addRow(){keep();dr.rows.push({l:'',o:'2.00'});render()}
+function delRow(i){keep();if(dr.rows.length>2){dr.rows.splice(i,1);render()}}
+function week(n){keep();wk=Math.max(0,wk+n);render()}
+function lesson(i,h,c){keep();const d=monday();d.setDate(d.getDate()+i);const[H,M]=HRS[h].split(':');d.setHours(+H,+M);dr.subj=c;dr.close=loc(d);render()}
 function addView(){
-  const d=new Date(Date.now()+864e5);d.setMinutes(d.getMinutes()-d.getTimezoneOffset());
-  return `<h3>Nová sázka</h3>
-  <select id="subj">${SUBJ.map(s=>`<option>${s}</option>`).join('')}</select>
-  <input id="title" placeholder="Otázka, např. Koho vyvolá první k tabuli?">
-  <p class="m" style="margin:8px 0 0">Sázky se uzavřou:</p>
-  <input id="close" type="datetime-local" value="${d.toISOString().slice(0,16)}">
-  <p class="m" style="margin:8px 0 0">Možnosti (každá na nový řádek):</p>
-  <textarea id="opts" rows="4">Kluk
-Holka</textarea>
+  const m=monday(),now=new Date(),fr=new Date(m);fr.setDate(m.getDate()+4);
+  if(!dr.close)dr.close=loc(new Date(Date.now()+864e5));
+  const days=[1,2,3,4,5].map(i=>{
+    const d=new Date(m);d.setDate(m.getDate()+i-1);
+    const ch=SCH[i].map(([h,c])=>{
+      const t=new Date(d),[H,M]=HRS[h].split(':');t.setHours(+H,+M);
+      const on=dr.close==loc(t)&&dr.subj==c;
+      return `<button class="ls ${on?'on':''}" ${t<now?'disabled':''} onclick="lesson(${i-1},${h},'${c}')"><small>${h}.</small>${c}</button>`}).join('');
+    return `<div class="dy"><b>${DAYS[i]}<small>${d.getDate()}.${d.getMonth()+1}.</small></b><div>${ch}</div></div>`}).join('');
+  return `<h3>Vyber hodinu z rozvrhu</h3>
+  <div class="wkn"><button onclick="week(-1)" ${wk<1?'disabled':''}>‹</button><span>${m.getDate()}.${m.getMonth()+1}. – ${fr.getDate()}.${fr.getMonth()+1}.</span><button onclick="week(1)">›</button></div>
+  ${days}
+  <h3>Nová sázka</h3>
+  <select id="subj">${SUBJ.map(s=>`<option ${s==dr.subj?'selected':''}>${s}</option>`).join('')}</select>
+  <input id="title" placeholder="Otázka, např. Koho vyvolá první k tabuli?" value="${esc(dr.title)}">
+  <p class="m" style="margin:8px 0 0">Sázky se uzavřou (po kliknutí na hodinu = začátek hodiny):</p>
+  <input id="close" type="datetime-local" value="${dr.close}">
+  <p class="m" style="margin:8px 0 0">Možnosti a jejich kurzy:</p>
+  ${dr.rows.map((r,i)=>`<div class="rw"><input placeholder="Možnost" value="${esc(r.l)}"><input class="o2" type="number" step="0.01" min="1.01" inputmode="decimal" value="${esc(r.o)}"><button class="x" onclick="delRow(${i})">✕</button></div>`).join('')}
+  <button class="btn sec" onclick="addRow()">+ Přidat možnost</button>
   <button class="btn" onclick="create()">Přidat sázku</button>`;
 }
 
+function pw(){const o=data.opts.find(o=>o.id==sel),a=parseInt($('#amt').value)||0;$('#pw').textContent=o&&a?'Při výhře dostaneš '+Math.floor(a*o.odds)+' 🪙':''}
 function pick(id){sel=id;render()}
 async function bet(){
   const a=parseInt($('#amt').value);if(!a||a<1)return alert('Zadej částku.');
@@ -153,10 +194,11 @@ async function bet(){
   if(r.error)return alert(r.error.message);sel=null;await load();
 }
 async function create(){
-  const o=$('#opts').value.split('\n').map(s=>s.trim()).filter(Boolean),t=$('#title').value.trim(),c=$('#close').value;
-  if(!t||!c||o.length<2)return alert('Vyplň otázku, čas a aspoň 2 možnosti.');
-  const r=await sb.rpc('create_bet',{p_subject:$('#subj').value,p_title:t,p_closes_at:new Date(c).toISOString(),p_options:o});
-  if(r.error)return alert(r.error.message);tab='bets';await load();
+  keep();const t=dr.title.trim(),c=dr.close;
+  const L=dr.rows.map(r=>r.l.trim()),O=dr.rows.map(r=>parseFloat(String(r.o).replace(',','.')));
+  if(!t||!c||L.some(x=>!x)||O.some(x=>!(x>=1.01)))return alert('Vyplň otázku, čas, názvy možností a kurzy (aspoň 1.01).');
+  const r=await sb.rpc('create_bet',{p_subject:dr.subj,p_title:t,p_closes_at:new Date(c).toISOString(),p_options:L,p_odds:O});
+  if(r.error)return alert(r.error.message);dr=DR0();tab='bets';await load();
 }
 async function settle(b,o){
   if(!confirm('Opravdu vyhodnotit? Mince se hned vyplatí.'))return;
