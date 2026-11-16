@@ -49,6 +49,13 @@ input,select,textarea{width:100%;padding:12px;margin:6px 0;border-radius:10px;bo
 .od{background:var(--ac);color:var(--onac);border-radius:8px;padding:2px 10px;font-size:17px}
 .rw{display:flex;gap:6px;align-items:center}.rw input{margin:3px 0;min-width:0}.rw .o2{width:90px;flex:none}
 .rw .x{border:1px solid var(--line);background:none;color:var(--bad);border-radius:10px;padding:10px 12px;font:inherit}
+.av.big{width:96px;height:96px;font-size:40px;margin:0}
+.pf{text-align:center;padding:8px 0 4px}.pf h2{margin:10px 0 0}
+.sg{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}
+.sg div{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+.sg b{display:block;font-size:22px}.sg small{color:var(--mu)}
+.pl{cursor:pointer}
+.hi{padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
 .wkn{display:flex;justify-content:space-between;align-items:center}
 .wkn button{border:1px solid var(--line);background:none;color:var(--tx);border-radius:10px;padding:6px 16px;font:inherit}
 .wkn button:disabled{opacity:.35}
@@ -77,6 +84,7 @@ const sb=supabase.createClient(SB_URL,SB_KEY);
 const $=s=>document.querySelector(s);
 const SUBJ=['ČJL','MAT','EKO','ANJ','UCE','MAM','PRA','NEJ','PRXU','TEV','PEK','HOZ','IDK','Jiné'];
 let uid=null,me=null,tab='bets',sel=null,data={bets:[],opts:[],wagers:[],profiles:[]};
+const OD=o=>(data.odds&&data.odds[o.id])||Number(o.odds);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=d=>new Date(d).toLocaleString('cs-CZ',{weekday:'short',day:'numeric',month:'numeric',hour:'2-digit',minute:'2-digit'});
 const mail=n=>'u'+[...new TextEncoder().encode(n.trim().toLowerCase())].map(b=>b.toString(16).padStart(2,'0')).join('')+'@trida.app';
@@ -104,27 +112,28 @@ async function start(){
   await load();
 }
 async function load(){
-  const[b,o,w,p]=await Promise.all([
+  const[b,o,w,p,od]=await Promise.all([
     sb.from('bets').select('*'),sb.from('bet_options').select('*'),
-    sb.from('wagers').select('*'),sb.from('profiles').select('*')]);
-  data={bets:b.data||[],opts:o.data||[],wagers:w.data||[],profiles:p.data||[]};
+    sb.from('wagers').select('*'),sb.from('profiles').select('*'),sb.rpc('all_odds')]);
+  const odds={};(od.data||[]).forEach(x=>odds[x.option_id]=Number(x.odds));
+  data={bets:b.data||[],opts:o.data||[],wagers:w.data||[],profiles:p.data||[],odds};
   me=data.profiles.find(x=>x.id===uid);render();
 }
-setInterval(()=>{const f=document.activeElement;if(uid&&tab!='add'&&!(f&&f.tagName=='INPUT'))load()},20000);
+setInterval(()=>{const f=document.activeElement;if(uid&&tab!='add'&&!(f&&f.tagName=='INPUT'))load()},10000);
 
 function render(){
   if(!me){$('#app').innerHTML='<main class="m">Načítám…</main>';return}
   const tabs=[['bets','Sázky'],['top','Žebříček']];if(me.is_admin)tabs.push(['add','Přidat']);
   $('#app').innerHTML=`<header><b>🎲 Třídní sázky</b><span style="display:flex;align-items:center">${av(me,'me')}${esc(me.name)}&nbsp;<b>🪙 ${me.balance}</b><a onclick="out()">odhlásit</a></span></header>
   <nav>${tabs.map(([k,l])=>`<button class="${tab==k?'on':''}" onclick="tab='${k}';sel=null;render()">${l}</button>`).join('')}</nav>
-  <main>${tab=='bets'?betsView():tab=='top'?topView():addView()}</main>`;
+  <main>${tab=='bets'?betsView():tab=='top'?topView():tab=='prof'?statsView(data.profiles.find(x=>x.id==pid)||me):addView()}</main>`;
 }
 function betsView(){
   const now=new Date(),L=[],C=[];
   data.bets.forEach(b=>(b.status=='open'&&new Date(b.closes_at)>now?L:C).push(b));
   L.sort((a,b)=>new Date(a.closes_at)-new Date(b.closes_at));
   C.sort((a,b)=>new Date(b.closes_at)-new Date(a.closes_at));
-  return (L.length?L.map(card).join(''):'<p class="m">Teď nejsou žádné otevřené sázky.</p>')+(C.length?'<h3>Uzavřené</h3>'+C.map(card).join(''):'');
+  return '<p class="m">Kurzy se mění podle toho, kolik se na co vsadilo. Platí kurz z chvíle, kdy vsadíš.</p>'+(L.length?L.map(card).join(''):'<p class="m">Teď nejsou žádné otevřené sázky.</p>')+(C.length?'<h3>Uzavřené</h3>'+C.map(card).join(''):'');
 }
 function card(b){
   const os=data.opts.filter(o=>o.bet_id==b.id),ws=data.wagers.filter(w=>w.bet_id==b.id),mine=ws.filter(w=>w.user_id==uid);
@@ -135,7 +144,7 @@ function card(b){
     const mw=mine.filter(w=>w.option_id==o.id),m=mw.reduce((x,w)=>x+w.amount,0),pwin=mw.reduce((x,w)=>x+Math.floor(w.amount*w.odds),0);
     const win=b.status=='settled'&&b.winning_option_id==o.id;
     return `<div class="o ${sel==o.id?'sel':''} ${win?'win':''}" ${live?`onclick="pick(${o.id})"`:''}>
-      <span>${win?'🏆 ':''}${esc(o.label)}</span>${adm?`<button class="a" onclick="event.stopPropagation();settle(${b.id},${o.id})">✓ vyhrálo</button>`:''}<b class="od">${Number(o.odds).toFixed(2)}</b>
+      <span>${win?'🏆 ':''}${esc(o.label)}</span>${adm?`<button class="a" onclick="event.stopPropagation();settle(${b.id},${o.id})">✓ vyhrálo</button>`:''}<b class="od">${OD(o).toFixed(2)}${OD(o)>Number(o.odds)+0.004?' ▲':OD(o)<Number(o.odds)-0.004?' ▼':''}</b>
       ${m?`<small>Tvoje sázka ${m} 🪙 → možná výhra ${pwin} 🪙</small>`:''}</div>`}).join('');
   const bar=live&&os.some(o=>o.id==sel)?`<div class="bar">${[10,50,100].map(v=>`<button onclick="$('#amt').value=${v};pw()">${v}</button>`).join('')}<input id="amt" type="number" min="1" inputmode="numeric" placeholder="částka" oninput="pw()"><button class="go" onclick="bet()">Vsadit</button></div><small class="m" id="pw"></small>`:'';
   let res='';
@@ -144,7 +153,7 @@ function card(b){
     ${adm?`<p><a onclick="cancelBet(${b.id})" style="margin:0">Zrušit sázku</a></p>`:''}</div>`;
 }
 function topView(){
-  return [...data.profiles].sort((a,b)=>b.balance-a.balance).map((p,i)=>`<div class="pl ${p.id==uid?'me':''}"><span style="display:flex;align-items:center">${['🥇','🥈','🥉'][i]||i+1+'.'}&nbsp;${av(p)}${esc(p.name)}</span><span>🪙 ${p.balance}</span></div>`).join('');
+  return [...data.profiles].sort((a,b)=>b.balance-a.balance).map((p,i)=>`<div class="pl ${p.id==uid?'me':''}" onclick="openProf('${p.id}')"><span style="display:flex;align-items:center">${['🥇','🥈','🥉'][i]||i+1+'.'}&nbsp;${av(p)}${esc(p.name)}</span><span>🪙 ${p.balance}</span></div>`).join('');
 }
 const HRS={1:'8:00',2:'8:55',3:'9:55',4:'11:00',5:'11:55',6:'13:15',7:'14:05',8:'14:55',9:'15:45'};
 const SCH={1:[[1,'ČJL'],[2,'MAT'],[3,'EKO'],[4,'EKO'],[5,'ANJ']],
@@ -180,18 +189,43 @@ function addView(){
   <input id="title" placeholder="Otázka, např. Koho vyvolá první k tabuli?" value="${esc(dr.title)}">
   <p class="m" style="margin:8px 0 0">Sázky se uzavřou (po kliknutí na hodinu = začátek hodiny):</p>
   <input id="close" type="datetime-local" value="${dr.close}">
-  <p class="m" style="margin:8px 0 0">Možnosti a jejich kurzy:</p>
+  <p class="m" style="margin:8px 0 0">Možnosti a počáteční kurzy (pak se samy mění podle sázek):</p>
   ${dr.rows.map((r,i)=>`<div class="rw"><input placeholder="Možnost" value="${esc(r.l)}"><input class="o2" type="number" step="0.01" min="1.01" inputmode="decimal" value="${esc(r.o)}"><button class="x" onclick="delRow(${i})">✕</button></div>`).join('')}
   <button class="btn sec" onclick="addRow()">+ Přidat možnost</button>
   <button class="btn" onclick="create()">Přidat sázku</button>`;
 }
 
-function pw(){const o=data.opts.find(o=>o.id==sel),a=parseInt($('#amt').value)||0;$('#pw').textContent=o&&a?'Při výhře dostaneš '+Math.floor(a*o.odds)+' 🪙':''}
+let pid=null;
+function openProf(id){pid=id;tab='prof';sel=null;render();scrollTo(0,0)}
+function statsView(p){
+  const own=p.id==uid;
+  const ws=data.wagers.filter(w=>w.user_id==p.id).map(w=>({w,b:data.bets.find(x=>x.id==w.bet_id),o:data.opts.find(x=>x.id==w.option_id)})).filter(x=>x.b);
+  const done=ws.filter(x=>x.b.status=='settled'),won=done.filter(x=>x.w.payout>0),open=ws.filter(x=>x.b.status=='open');
+  const staked=done.reduce((s,x)=>s+x.w.amount,0),net=done.reduce((s,x)=>s+(x.w.payout||0)-x.w.amount,0);
+  const best=Math.max(0,...won.map(x=>x.w.payout-x.w.amount));
+  const rank=[...data.profiles].sort((a,b)=>b.balance-a.balance).findIndex(x=>x.id==p.id)+1;
+  const box=(v,l)=>`<div><b>${v}</b><small>${l}</small></div>`;
+  const hist=[...ws].sort((a,b)=>new Date(b.w.created_at)-new Date(a.w.created_at)).slice(0,10).map(x=>{
+    const st=x.b.status,n=(x.w.payout||0)-x.w.amount;
+    const r=st=='open'?'⏳':st=='cancelled'?'↩️':x.w.payout>0?`<span class="pos">+${n}</span>`:`<span class="neg">${n}</span>`;
+    return `<div class="hi">${st=='settled'?(x.w.payout>0?'✅':'❌'):''} ${esc(x.b.title)}<br><small class="m">${esc(x.o?x.o.label:'')} · ${x.w.amount} 🪙 × ${Number(x.w.odds).toFixed(2)} · ${r}</small></div>`}).join('');
+  return `<a onclick="tab='top';render()" style="margin:0">‹ Žebříček</a>
+  <div class="pf">${av(p,'big')}<h2>${esc(p.name)}</h2>
+  ${own?`<button class="btn sec" style="width:auto;padding:8px 16px" onclick="$('#ph').click()">📷 ${p.avatar_at?'Změnit fotku':'Nahrát fotku'}</button>`:''}</div>
+  <div class="sg">${box('🪙 '+p.balance,'Zůstatek')}${box(rank+'. z '+data.profiles.length,'Pořadí')}
+  ${box(ws.filter(x=>x.b.status!='cancelled').length,'Sázek celkem')}${box(done.length?Math.round(won.length*100/done.length)+' %':'–','Úspěšnost')}
+  ${box((net>0?'+':'')+net,'Čistý zisk 🪙')}${box(best?'+'+best:'–','Největší výhra')}
+  ${box(staked,'Vsazeno celkem')}${box(open.length,'Probíhající sázky')}</div>
+  <h3>Poslední sázky</h3>${hist||'<p class="m">Zatím žádné sázky.</p>'}`;
+}
+function pw(){const o=data.opts.find(o=>o.id==sel),a=parseInt($('#amt').value)||0;$('#pw').textContent=o&&a?'Při výhře dostaneš '+Math.floor(a*OD(o))+' 🪙':''}
 function pick(id){sel=id;render()}
 async function bet(){
   const a=parseInt($('#amt').value);if(!a||a<1)return alert('Zadej částku.');
-  const r=await sb.rpc('place_bet',{p_option_id:sel,p_amount:a});
-  if(r.error)return alert(r.error.message);sel=null;await load();
+  const so=data.opts.find(x=>x.id==sel);
+  const r=await sb.rpc('place_bet',{p_option_id:sel,p_amount:a,p_odds:OD(so)});
+  if(r.error){await load();return alert(r.error.message)}
+  sel=null;await load();
 }
 async function create(){
   keep();const t=dr.title.trim(),c=dr.close;
@@ -213,7 +247,7 @@ async function cancelBet(b){
 function paint(){$('#tg').textContent=document.documentElement.dataset.theme=='dark'?'☀️':'🌙'}
 function flip(){const t=document.documentElement.dataset.theme=='dark'?'light':'dark';document.documentElement.dataset.theme=t;try{localStorage.setItem('th',t)}catch(e){}paint()}
 const av=(p,c='')=>{
-  const oc=c=='me'?` onclick="$('#ph').click()" title="Změnit fotku"`:'';
+  const oc=c=='me'?` onclick="openProf('${p.id}')" title="Můj profil"`:'';
   if(p.avatar_at)return `<img class="av ${c}" src="${SB_URL}/storage/v1/object/public/avatars/${p.id}/avatar.jpg?v=${encodeURIComponent(p.avatar_at)}" alt=""${oc}>`;
   return `<span class="av ${c}"${oc}>${esc(p.name[0].toUpperCase())}</span>`;
 };
